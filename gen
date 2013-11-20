@@ -1,0 +1,46 @@
+#!/bin/bash
+#
+# Generate a record for decompose.
+#
+# Usage: ./gen [ N B inputfile outputfile ]
+#
+# First argument is size of the matrix.
+N=16
+# Second argument is the block size.
+B=4
+# Third argument is the name of the input file containing the matrix data.
+I=a
+# Fourth argument is the name of the output file.
+O=a.out
+
+# Extract optional arguments:
+[ $# -gt 0 ] && N=$1 && shift
+[ $# -gt 0 ] && B=$1 && shift
+[ $# -gt 0 ] && I=$1 && shift
+[ $# -gt 0 ] && O=$1 && shift
+
+function mkstr () {
+    s="(char[${#1}])"
+    for (( i=0; i<${#1}; i++ ))
+    do
+        if [ $i -gt 0 ]; then
+            s="${s},"
+        fi
+        s="${s}${1:$i:1}"
+    done
+    echo $s
+}
+
+inp=`mkstr $I`
+out=`mkstr $O`
+
+cat << EOI
+<?xml version="1.0" ?>
+<record xmlns="snet-home.org" type="data" mode="textual"  interface="C4SNet">
+    <field label="InFile">$inp</field>
+    <field label="OutFile">$out</field>
+    <tag label="N">$N</tag>
+    <tag label="B">$B</tag>
+</record>
+<record type="terminate" />
+EOI

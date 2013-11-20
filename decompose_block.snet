@@ -1,0 +1,61 @@
+<metadata> <boxdefault> <interface value="C4SNet" /> </boxdefault> </metadata>
+
+net decompose_block
+{
+    box decompose( (InFile, OutFile, <N>, <B>)
+                -> (A, L, <bs>, <p>, <k>));
+    
+    box gen_counter(
+	          -> (<counter>));
+
+    box finalize( (Lout, <bs>, <p>)
+               -> (Done));
+	
+    // Initial Factorization
+    box compute_s1( (A, L, <bs>, <p>, <k>)
+                 -> (A, L, <bs>, <p>, <k>, <j>)
+                  | (Lout, <bs>, <p>));
+	
+    // Triangular Solve
+    net compute_s2
+    {
+        box solve_s2( (A, L, <bs>, <p>, <k>, <j>)
+                   -> (A, L, <bs>, <p>, <k>));
+		
+        // Block computation synchronization after step 2 (s2)
+        net s2_sync( {A, L, <bs>, <p>, <k>}
+                   | {<counter>}
+                  -> {As, Ls, <bs>, <p>, <k>})
+        {
+            box merge( (A, L, <counter>, <bs>, <p>, <k>)
+                    -> (<counter>)
+                     | (As, Ls, <bs>, <p>, <k>));
+        } connect ( [|{A, L, <bs>, <p>, <k>},{<counter>}|]*{A, <counter>} .. merge) \ {<counter>},{A,L};
+    } connect ((solve_s2!<j> | gen_counter) .. s2_sync);
+
+    // Symmetric Rank Update
+    net compute_s3
+    {
+        box distribute( (As, Ls, <bs>, <p>, <k>)
+                     -> (As, Ls, <bs>, <p>, <k>, <j>));
+
+        box update( (As, Ls, <bs>, <p>, <k>, <j>)
+                 -> (As, Ls, <bs>, <p>, <k>));
+
+        // Block computation synchronization after step 3 (s3)
+        net update_sync( {As, Ls, <bs>, <p>, <k>}
+                       | {<counter>}
+                      -> {A, L, <bs>, <p>, <k>})
+        {
+            net s3_sync( {As, Ls, <bs>, <p>, <k>}
+                       | {<counter>}
+                      -> {A, L, <bs>, <p>, <k>})
+            {
+                box sync( (As, Ls, <counter>, <bs>, <p>, <k>)
+                       -> (<counter>)
+                        | (A, L, <bs>, <p>, <k>));
+            } connect ( [|{As, Ls, <bs>, <p>, <k>},{<counter>}|]*{As, <counter>} .. sync) \ {<counter>},{As,Ls};
+        } connect s3_sync .. [{<k>} -> {<k=k+1>}];
+    } connect ( (distribute .. update!<j>) | gen_counter) .. update_sync;
+	
+} connect decompose .. (compute_s1 .. ( (compute_s2 .. compute_s3) | finalize))*{Done};

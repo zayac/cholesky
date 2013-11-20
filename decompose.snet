@@ -1,0 +1,80 @@
+<metadata> <default> <interface value="C4SNet" /> </default> </metadata>
+
+net decompose( {InFile, OutFile, <N>, <B>} -> {String} )
+{
+    box start( (InFile, OutFile, <N>, <B>)
+            -> (OutFile, Result, <X>) 
+             | (Fac, <N>, <B>, <K>)
+             | (Tri2, <K>, <J>)
+             | (Sym3, <K>, <J>, <I>) );
+
+    net loop ( {Fac, <N>, <B>, <K>}
+             | {Tri, <N>, <B>, <K>, <J>}
+             | {Tri2, <K>, <J>}
+             | {Sym, <N>, <B>, <K>, <J>, <I>}
+             | {Sym2, <K>, <J>, <I>}
+             | {Sym3, <K>, <J>, <I>}
+            -> {Out, <N>, <B>, <K>, <J>, <I>} )
+    {
+        box facto( (Fac, <N>, <B>, <K>) 
+                -> (Tri, <N>, <B>, <K>, <J>)
+                 | (Out, <N>, <B>, <K>, <J>, <I>) );
+
+        net tri( {Tri, <N>, <B>, <K>, <J>}
+               | {Tri2, <K>, <J>}
+              -> {Sym, <N>, <B>, <K>, <J>, <I>}
+               | {Sym2, <K>, <J>, <I>}
+               | {Out, <N>, <B>, <K>, <J>, <I>} )
+        {
+            // box trilog( (<K>, <J>) -> (<K>, <J>) );
+
+            net trisync
+            connect [|{Tri, <N>, <B>, <K>, <J>}, {Tri2, <K>, <J>}|];
+
+            box trisol( (Tri, Tri2, <N>, <B>, <K>, <J>)
+                     -> (Sym, <N>, <B>, <K>, <J>, <I>)
+                      | (Sym2, <K>, <J>, <I>)
+                      | (Out, <N>, <B>, <K>, <J>, <I>) );
+
+            box trinot( (<K>, <J>) -> );
+        } connect (trisync .. (trisol | trinot)) ! <K> ! <J>;
+
+        net symrup( {Sym, <N>, <B>, <K>, <J>, <I>}
+                  | {Sym2, <K>, <J>, <I>}
+                  | {Sym3, <K>, <J>, <I>}
+                 -> {Fac, <N>, <B>, <K>}
+                  | {Tri2, <K>, <J>}
+                  | {Sym3, <K>, <J>, <I>} )
+        {
+            // box symlog( (<K>, <J>, <I>) -> (<K>, <J>, <I>) );
+
+            net symsync
+            connect [|{Sym, <N>, <B>, <K>, <J>, <I>},
+                      {Sym2, <K>, <J>, <I>},
+                      {Sym3, <K>, <J>, <I>}|];
+
+            box rankup( (Sym, Sym2, Sym3, <N>, <B>, <K>, <J>, <I>)
+                     -> (Fac, <N>, <B>, <K>)
+                      | (Tri2, <K>, <J>)
+                      | (Sym3, <K>, <J>, <I>) );
+
+            box symnot( (<K>, <J>, <I>) -> );
+        } connect (symsync .. (rankup | symnot)) ! <K> ! <J> ! <I>;
+
+    } connect (facto | tri | symrup) \ {Fac}, {Tri}, {Tri2}, {Sym}, {Sym2}, {Sym3};
+
+    net collect ( {OutFile, Result, <X>}
+                | {Out, <N>, <B>, <K>, <J>, <I>}
+               -> {String} )
+    {
+        net sync
+        connect [| {OutFile, Result, <X>}, {Out, <N>, <B>, <K>, <J>, <I>} |]
+                 * {OutFile, Result, <X>, Out, <N>, <B>, <K>, <J>, <I>};
+
+        box merge( (OutFile, Result, <X>, Out, <N>, <B>, <K>, <J>, <I>)
+                -> (OutFile, Result, <X>) | (String) );
+
+    } connect (sync .. merge) \ {Result}, {Out};
+
+} connect start .. loop .. collect;
+
